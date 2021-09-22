@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://Eayne.github.io</id>
-    <title>Gridea</title>
-    <updated>2021-09-22T06:50:19.029Z</updated>
+    <title>myy blog</title>
+    <updated>2021-09-22T09:18:29.862Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <link rel="alternate" href="https://Eayne.github.io"/>
     <link rel="self" href="https://Eayne.github.io/atom.xml"/>
-    <subtitle>温故而知新</subtitle>
+    <subtitle>我的博客</subtitle>
     <logo>https://Eayne.github.io/images/avatar.png</logo>
     <icon>https://Eayne.github.io/favicon.ico</icon>
-    <rights>All rights reserved 2021, Gridea</rights>
+    <rights>All rights reserved 2021, myy blog</rights>
     <entry>
         <title type="html"><![CDATA[Hello Gridea]]></title>
         <id>https://Eayne.github.io/post/hello-gridea/</id>
