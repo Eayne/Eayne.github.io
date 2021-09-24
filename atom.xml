@@ -2,7 +2,7 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://Eayne.github.io</id>
     <title>myy blog</title>
-    <updated>2021-09-22T11:42:03.563Z</updated>
+    <updated>2021-09-24T14:01:27.547Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <link rel="alternate" href="https://Eayne.github.io"/>
     <link rel="self" href="https://Eayne.github.io/atom.xml"/>
@@ -10,6 +10,24 @@
     <logo>https://Eayne.github.io/images/avatar.png</logo>
     <icon>https://Eayne.github.io/favicon.ico</icon>
     <rights>All rights reserved 2021, myy blog</rights>
+    <entry>
+        <title type="html"><![CDATA[Muduo Buffer]]></title>
+        <id>https://Eayne.github.io/post/muduo-buffer/</id>
+        <link href="https://Eayne.github.io/post/muduo-buffer/">
+        </link>
+        <updated>2021-09-24T14:01:14.000Z</updated>
+        <content type="html"><![CDATA[<p>1</p>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[Muduo Reactor]]></title>
+        <id>https://Eayne.github.io/post/muduo-reactor/</id>
+        <link href="https://Eayne.github.io/post/muduo-reactor/">
+        </link>
+        <updated>2021-09-24T14:01:00.000Z</updated>
+        <content type="html"><![CDATA[<p>1</p>
+]]></content>
+    </entry>
     <entry>
         <title type="html"><![CDATA[muduo 构建]]></title>
         <id>https://Eayne.github.io/post/muduo-gou-jian/</id>
