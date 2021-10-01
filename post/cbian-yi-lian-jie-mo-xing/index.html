@@ -3,7 +3,7 @@
     <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>C++编译链接模型 | myy blog</title>
-<link rel="shortcut icon" href="https://Eayne.github.io/favicon.ico?v=1633070561814">
+<link rel="shortcut icon" href="https://Eayne.github.io/favicon.ico?v=1633095850639">
 <link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
 <link rel="stylesheet" href="https://Eayne.github.io/styles/main.css">
 <link rel="alternate" type="application/atom+xml" title="C++编译链接模型 | myy blog - Atom Feed" href="https://Eayne.github.io/atom.xml">
@@ -16,7 +16,7 @@
 将多个.cpp源文件分别编译成.o文件，然后再将用到的目标文件、静态库与动态库链接成对应的可执行文件。
 
 前向编译
-前向编译是什么：
+前向编译是什么
 //b.h
 class A;
 class B{
@@ -24,7 +24,7 @@ class B{
 };
 
 
-此时在b..." />
+此时在b...." />
     <meta name="keywords" content="muduo" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
     <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
@@ -34,7 +34,7 @@ class B{
       <div class="main-content">
         <div class="site-header">
   <a href="https://Eayne.github.io">
-  <img class="avatar" src="https://Eayne.github.io/images/avatar.png?v=1633070561814" alt="">
+  <img class="avatar" src="https://Eayne.github.io/images/avatar.png?v=1633095850639" alt="">
   </a>
   <h1 class="site-title">
     myy blog
@@ -98,7 +98,7 @@ class B{
 <li>将多个.cpp源文件分别编译成.o文件，然后再将用到的目标文件、静态库与动态库链接成对应的可执行文件。</li>
 </ul>
 <h2 id="前向编译">前向编译</h2>
-<p>前向编译是什么：</p>
+<h3 id="前向编译是什么">前向编译是什么</h3>
 <pre><code class="language-c++">//b.h
 class A;
 class B{
@@ -108,7 +108,7 @@ class B{
 <ul>
 <li>此时在b.h文件中不需要<code>#include &quot;a.h&quot;</code>就可以通过编译。</li>
 </ul>
-<p>前向编译合理的原因：</p>
+<h3 id="前向编译合理的原因">前向编译合理的原因</h3>
 <ul>
 <li>编译器在执行parse时，只需要知道对应的声明即可，不需要知道实现。<br>
 如函数（参数个数、类型、返回值类型），因此函数声明通常放在头文件中，这样<code>include</code>这个头文件的源文件都可以使用这个函数。<br>
@@ -117,7 +117,7 @@ class B{
 然后<code>#include &quot;b.h&quot;</code>的文件都需要和定义的源文件进行链接（无论该定义是.o文件还是库文件）</li>
 <li>b.cpp文件还是需要<code>#include &quot;A.h&quot;</code>的，因为在b.cpp文件中是需要用到A类的定义的。</li>
 </ul>
-<p>前向编译的好处：</p>
+<h3 id="前向编译的好处">前向编译的好处</h3>
 <ol>
 <li>可以用来减少编译期依赖。<br>
 因为如果其他文件需要<code>#include &quot;b.h&quot;</code>，这些文件不需要将a.h头文件的内容一起包含进去。这样如果a.h发生改动的话，需要重新编译的源文件会减少。</li>
@@ -126,7 +126,7 @@ class B{
 <li>有时前向编译是必须的。<br>
 比如两个类相互指涉的情况，即A类包含B类对象，B类也包含A类对象，这样无论先定义A类还是B类都会错误，解决办法是使用前向声明其中一个类即可。</li>
 </ol>
-<p>前向编译不是万能的， 只有在一些条件下才可以使用（即编译期间不需要完整定义的）：</p>
+<h3 id="前向编译使用情况即编译期间不需要完整定义的">前向编译使用情况（即编译期间不需要完整定义的）</h3>
 <ul>
 <li>定义或声明为<code>A*,A&amp;</code>，包括函数参数、返回类型、局部变量、类成员变量等。或者如<code>unique_ptr&lt;A&gt;,vector&lt;A&gt;</code>这种A作为模版类型的。</li>
 <li>声明以Foo为参数或返回类型的函数。<br>
@@ -134,7 +134,7 @@ class B{
 类似的，如果Foo为成员变量类型的话，也不可以使用前向声明。</li>
 <li>当要访问到Foo类的成员，需要知道Foo的大小（sizeof）等情况不能使用前向声明，因为此时需要知道这个类的定义。</li>
 </ul>
-<p>简化编译模型时的一些坑：</p>
+<h3 id="简化编译模型时的一些坑">简化编译模型时的一些坑</h3>
 <ul>
 <li>注意如果在.h文件中，某个类包含类似<code>Foo Buffer</code>这样的成员对象，就不能使用前向声明<code>class Foo;</code>了。但是类似<code>Foo&amp; Buffer,Foo* Buufer</code>是可以使用前向声明的。</li>
 <li>注意include的传递性。<br>
@@ -171,7 +171,15 @@ void bar(Foo &amp;foo)
 <li>
 <ul>
 <li><a href="#%E7%BC%96%E8%AF%91%E9%93%BE%E6%8E%A5%E6%A8%A1%E5%9E%8B">编译链接模型</a></li>
-<li><a href="#%E5%89%8D%E5%90%91%E7%BC%96%E8%AF%91">前向编译</a></li>
+<li><a href="#%E5%89%8D%E5%90%91%E7%BC%96%E8%AF%91">前向编译</a>
+<ul>
+<li><a href="#%E5%89%8D%E5%90%91%E7%BC%96%E8%AF%91%E6%98%AF%E4%BB%80%E4%B9%88">前向编译是什么</a></li>
+<li><a href="#%E5%89%8D%E5%90%91%E7%BC%96%E8%AF%91%E5%90%88%E7%90%86%E7%9A%84%E5%8E%9F%E5%9B%A0">前向编译合理的原因</a></li>
+<li><a href="#%E5%89%8D%E5%90%91%E7%BC%96%E8%AF%91%E7%9A%84%E5%A5%BD%E5%A4%84">前向编译的好处</a></li>
+<li><a href="#%E5%89%8D%E5%90%91%E7%BC%96%E8%AF%91%E4%BD%BF%E7%94%A8%E6%83%85%E5%86%B5%E5%8D%B3%E7%BC%96%E8%AF%91%E6%9C%9F%E9%97%B4%E4%B8%8D%E9%9C%80%E8%A6%81%E5%AE%8C%E6%95%B4%E5%AE%9A%E4%B9%89%E7%9A%84">前向编译使用情况（即编译期间不需要完整定义的）</a></li>
+<li><a href="#%E7%AE%80%E5%8C%96%E7%BC%96%E8%AF%91%E6%A8%A1%E5%9E%8B%E6%97%B6%E7%9A%84%E4%B8%80%E4%BA%9B%E5%9D%91">简化编译模型时的一些坑</a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>

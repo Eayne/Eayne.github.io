@@ -2,21 +2,21 @@
   <head>
     <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>muduo 构建 | myy blog</title>
+<title>Muduo I/O多路复用 | myy blog</title>
 <link rel="shortcut icon" href="https://Eayne.github.io/favicon.ico?v=1633095850639">
 <link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
 <link rel="stylesheet" href="https://Eayne.github.io/styles/main.css">
-<link rel="alternate" type="application/atom+xml" title="muduo 构建 | myy blog - Atom Feed" href="https://Eayne.github.io/atom.xml">
+<link rel="alternate" type="application/atom+xml" title="Muduo I/O多路复用 | myy blog - Atom Feed" href="https://Eayne.github.io/atom.xml">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
 
 
 
-    <meta name="description" content="C++项目的构建、布局等
-源代码布局
-生成文件布局
-构建过程
-测试
-" />
+    <meta name="description" content="
+non-blocking网络库的核心是event loop，这依赖于I/O multiplexing
+
+
+non-blocking应该使用I/O multiplexing而不是轮询，后者费CPU
+IO multiplexing不应该和bl..." />
     <meta name="keywords" content="muduo" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
     <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
@@ -67,14 +67,14 @@
         <div class="post-detail">
           <article class="post">
             <h2 class="post-title">
-              muduo 构建
+              Muduo I/O多路复用
             </h2>
             <div class="post-info">
               <span>
-                2021-09-22
+                2021-10-01
               </span>
               <span>
-                1 min read
+                2 min read
               </span>
               
                 <a href="https://Eayne.github.io/tag/Bgs-V9DJY/" class="post-tag">
@@ -85,21 +85,44 @@
             
             <div class="post-content-wrapper">
               <div class="post-content">
-                <p>C++项目的构建、布局等</p>
-<h2 id="源代码布局">源代码布局</h2>
-<h2 id="生成文件布局">生成文件布局</h2>
-<h2 id="构建过程">构建过程</h2>
-<h2 id="测试">测试</h2>
+                <ul>
+<li>non-blocking网络库的核心是event loop，这依赖于I/O multiplexing</li>
+</ul>
+<ol>
+<li>non-blocking应该使用I/O multiplexing而不是轮询，后者费CPU</li>
+<li>IO multiplexing不应该和blocking IO使用，后者的read/write/accept/connect会阻塞线程，从而影响IO多路复用中的其他事件处理。</li>
+</ol>
+<h2 id="level-trigger和edge-trigger">level trigger和edge trigger</h2>
+<ul>
+<li>level trigger（LT）：水平触发，满足条件就触发，比如读事件就是内核缓冲区有数据，写事件是内核缓冲区可写</li>
+<li>edge trigger（ET）：边缘触发，状态变化才触发，比如读事件中先读了50字节，剩下的数据不读的话下次IO事件如果没有新的可读数据，则不会提醒（在LT中是会再次触发的）</li>
+<li>select和poll都属于LT，而epoll支持ET+LT</li>
+<li>使用LT而不是用ET的理由：
+<ol>
+<li>LT编程更容易，不容易漏掉事件。</li>
+<li>使用ET的话，在IO事件发生时进行读写需要一直重复（<code>read,write</code>）直到EAGAIN出现才算完成，而LT就不需要这么多次的系统调用。</li>
+</ol>
+</li>
+<li>在使用LT时也要注意busy-loop问题，会导致CPU 100%利用率
+<ol>
+<li>读时一次性将内核缓冲区<code>read</code>完</li>
+<li><code>write</code>完以后及早关闭可写事件的注册。</li>
+</ol>
+</li>
+</ul>
+<h2 id="epoll和poll-select对比">epoll和poll、select对比</h2>
+<ul>
+<li>epoll适合文件描述符多、活动文件描述符比例小的情况。</li>
+<li>poll、select适合文件描述符少、活动文件描述符比例高的情况。</li>
+</ul>
 
               </div>
               <div class="toc-container">
                 <ul class="markdownIt-TOC">
 <li>
 <ul>
-<li><a href="#%E6%BA%90%E4%BB%A3%E7%A0%81%E5%B8%83%E5%B1%80">源代码布局</a></li>
-<li><a href="#%E7%94%9F%E6%88%90%E6%96%87%E4%BB%B6%E5%B8%83%E5%B1%80">生成文件布局</a></li>
-<li><a href="#%E6%9E%84%E5%BB%BA%E8%BF%87%E7%A8%8B">构建过程</a></li>
-<li><a href="#%E6%B5%8B%E8%AF%95">测试</a></li>
+<li><a href="#level-trigger%E5%92%8Cedge-trigger">level trigger和edge trigger</a></li>
+<li><a href="#epoll%E5%92%8Cpoll-select%E5%AF%B9%E6%AF%94">epoll和poll、select对比</a></li>
 </ul>
 </li>
 </ul>
@@ -112,9 +135,9 @@
         
           <div class="next-post">
             <div class="next">下一篇</div>
-            <a href="https://Eayne.github.io/post/muduo-ri-zhi-ku-fen-xi/">
+            <a href="https://Eayne.github.io/post/muduo-duo-xian-cheng/">
               <h3 class="post-title">
-                muduo 日志库
+                Muduo 多线程
               </h3>
             </a>
           </div>

@@ -3,7 +3,7 @@
     <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Muduo Buffer | myy blog</title>
-<link rel="shortcut icon" href="https://Eayne.github.io/favicon.ico?v=1633070561814">
+<link rel="shortcut icon" href="https://Eayne.github.io/favicon.ico?v=1633095850639">
 <link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
 <link rel="stylesheet" href="https://Eayne.github.io/styles/main.css">
 <link rel="alternate" type="application/atom+xml" title="Muduo Buffer | myy blog - Atom Feed" href="https://Eayne.github.io/atom.xml">
@@ -11,8 +11,12 @@
 
 
 
-    <meta name="description" content="1
-" />
+    <meta name="description" content="
+Muduo的Buffer是应用层（用户态）Buffer，即从应用层Output Buffer写入内核缓冲区，以及从内核缓冲区写入到应用层Input Buffer
+
+需要Buffer原因
+
+Muduo是非阻塞网络库。核心想法是将read,w..." />
     <meta name="keywords" content="muduo" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
     <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
@@ -22,7 +26,7 @@
       <div class="main-content">
         <div class="site-header">
   <a href="https://Eayne.github.io">
-  <img class="avatar" src="https://Eayne.github.io/images/avatar.png?v=1633070561814" alt="">
+  <img class="avatar" src="https://Eayne.github.io/images/avatar.png?v=1633095850639" alt="">
   </a>
   <h1 class="site-title">
     myy blog
@@ -70,7 +74,7 @@
                 2021-09-24
               </span>
               <span>
-                1 min read
+                4 min read
               </span>
               
                 <a href="https://Eayne.github.io/tag/Bgs-V9DJY/" class="post-tag">
@@ -81,11 +85,82 @@
             
             <div class="post-content-wrapper">
               <div class="post-content">
-                <p>1</p>
+                <ul>
+<li>Muduo的Buffer是应用层（用户态）Buffer，即从应用层Output Buffer写入内核缓冲区，以及从内核缓冲区写入到应用层Input Buffer</li>
+</ul>
+<h2 id="需要buffer原因">需要Buffer原因</h2>
+<ul>
+<li>Muduo是非阻塞网络库。核心想法是将<code>read,write</code>等系统调用为应用层封装好，应用层不用管底层的发送细节、错误、处理等。</li>
+<li>对于每个TCP连接，都分配一个Input Buffer和Output Buffer。</li>
+<li>Output Buffer：在调用<code>write</code>系统调用时，只是将数据写入到内核缓冲区后就返回。
+<ul>
+<li>发送数据：<br>
+在非阻塞网络编程中，可能出现只写入了部分数据，剩下部分数据没有成功写入（因为内核缓冲区满了），因此需要Output Buffer将未写入的数据缓冲起来，注册I/O复用的POLLOUT事件，等待下次在I/O复用返回内核缓冲区可写时写入。<br>
+（另外，在Output Buffer的内容全部<code>write</code>清空后，要及时撤销POLLOUT事件，否则每次循环时，可写事件都通知网络库，而网络库又没有内容写，就进入了busy loop）</li>
+<li>主动关闭连接（shutdown）：<br>
+如果程序要主动关闭连接，此时Output Buffer还有剩余，则应该先将Output Buffer的内容发送完毕，然后才调用<code>socket</code>层<code>shutdown write</code>。</li>
+</ul>
+</li>
+<li>Input Buffer：TCP接收到的消息不一定构成一条完整的信息或者一次性构成多个消息，此时需要Input Buffer将包暂存起来，供用户进行TCP分包操作。
+<ul>
+<li>读取数据：<br>
+在I/O复用中，当<code>socket</code>内核缓冲区变得可读时，一次性将内核缓冲区当内容拷贝到InputBuffer中。<br>
+（注意，如果没有一次性读取完，会反复触发<code>POLLIN</code>事件，因为muduo采用的是<code>level trigger</code>而不是edge  trigger）<br>
+然后调用用户提供的接收消息Callback函数，由用户自行去进行TCP分包。</li>
+</ul>
+</li>
+</ul>
+<h2 id="buffer设计">Buffer设计</h2>
+<ul>
+<li>Buffer是动态连续内存空间，即<code>vector&lt;char&gt;</code>。</li>
+<li>Buffer初始内存大小规划问题：
+<ol>
+<li>如果初始内存过小，会导致需要多次系统调用进行<code>read</code>。</li>
+<li>如果初始内存过大，虽然减小了系统调用次数，但是连接数量一多就会导致内存占用过大、使用效率低。</li>
+</ol>
+</li>
+<li>readv + 临时栈上空间解决该问题：
+<ul>
+<li>readv可以在调用read时传入iovec数组，一个iovec类似一个内存缓冲区。readv在读入到前一个iovec满了以后，会继续读到下一个iovec。</li>
+</ul>
+<ol>
+<li>在读取到Input Buffer时，先申请一个很大的栈上空间<code>char extrabuf[65536]</code>，然后将input buffer + extrabuf作为iovec传入readv。</li>
+<li>readv先写入到Input Buffer，如果Input Buffer内存不够用，就写入到extrabuf中，再将extrabuf的内容拷贝到Input Buffer中（先扩容Input Buffer）。</li>
+</ol>
+<ul>
+<li>好处是一开始Input Buffer可以设定的比较小，而readv因为extrabuf比较大通常一次就可以读取完，然后再将Input Buffer扩容到指定大小。</li>
+</ul>
+</li>
+<li>Buffer数据结构：
+<ol>
+<li>其实是一个<code>vector&lt;char&gt;</code>加两个读写指针。写的时候增加写指针，读的时候增加读指针。<br>
+注意这里的指针没有用<code>void*</code>类型，而是<code>int</code>类型，这是因为当对Buffer进行扩容时，<code>void*</code>就失效了。</li>
+<li>当读指针赶上了写指针，说明读完Buffer的内容了，此时将指针归位到Buffer开始处。</li>
+<li>当往Buffer写数据，而可用空间不够时，会先判断如果将Buffer当前数据移动到Buffer头部（即腾挪）的话剩余空间是否足够。如果不足够，才会进行扩容+拷贝Buffer当前内容的操作。</li>
+<li>Buffer不会缩容，避免反复分配内存。比如经常收发10kB的数据，就可以让缓冲区自适应到10kB大小</li>
+<li>Prepend操作：<code>vector&lt;char&gt;</code>的头部固定8个字节被保留下来，这样可以很方便的在数据前面添加字节。<br>
+比如如果不知道一个消息的长度，可以先将这个消息append到Buffer中，最终统计完长度在将长度Prepend到Buffer中</li>
+</ol>
+</li>
+</ul>
+<h2 id="其他的buffer设计">其他的Buffer设计</h2>
+<ul>
+<li>类似libevent、linux的sk_buff都是分段连续的buffer，使用链表将数据块链接到一起</li>
+<li>好处是zero-copy，即扩容时不再需要像vector一样的resize、copy操作</li>
+</ul>
 
               </div>
               <div class="toc-container">
-                
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#%E9%9C%80%E8%A6%81buffer%E5%8E%9F%E5%9B%A0">需要Buffer原因</a></li>
+<li><a href="#buffer%E8%AE%BE%E8%AE%A1">Buffer设计</a></li>
+<li><a href="#%E5%85%B6%E4%BB%96%E7%9A%84buffer%E8%AE%BE%E8%AE%A1">其他的Buffer设计</a></li>
+</ul>
+</li>
+</ul>
+
               </div>
             </div>
           </article>
