@@ -2,7 +2,7 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://Eayne.github.io</id>
     <title>myy blog</title>
-    <updated>2021-10-01T01:32:53.813Z</updated>
+    <updated>2021-10-01T06:42:45.146Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <link rel="alternate" href="https://Eayne.github.io"/>
     <link rel="self" href="https://Eayne.github.io/atom.xml"/>
@@ -16,7 +16,77 @@
         <link href="https://Eayne.github.io/post/cbian-yi-lian-jie-mo-xing/">
         </link>
         <updated>2021-10-01T00:58:49.000Z</updated>
-        <content type="html"><![CDATA[<p>1</p>
+        <content type="html"><![CDATA[<h2 id="编译链接模型">编译链接模型</h2>
+<ul>
+<li>将多个.cpp源文件分别编译成.o文件，然后再将用到的目标文件、静态库与动态库链接成对应的可执行文件。</li>
+</ul>
+<h2 id="前向编译">前向编译</h2>
+<p>前向编译是什么：</p>
+<pre><code class="language-c++">//b.h
+class A;
+class B{
+    A* ptr;
+};
+</code></pre>
+<ul>
+<li>此时在b.h文件中不需要<code>#include &quot;a.h&quot;</code>就可以通过编译。</li>
+</ul>
+<p>前向编译合理的原因：</p>
+<ul>
+<li>编译器在执行parse时，只需要知道对应的声明即可，不需要知道实现。<br>
+如函数（参数个数、类型、返回值类型），因此函数声明通常放在头文件中，这样<code>include</code>这个头文件的源文件都可以使用这个函数。<br>
+另外，类的声明也是类似的。比如在编译期间，B类中只需要<code>A*</code>这种指针类型，但是不需要知道A的具体定义</li>
+<li>然而，前向声明部分的内容需要在某个源文件中定义。否则会在链接期间出现错误。<br>
+然后<code>#include &quot;b.h&quot;</code>的文件都需要和定义的源文件进行链接（无论该定义是.o文件还是库文件）</li>
+<li>b.cpp文件还是需要<code>#include &quot;A.h&quot;</code>的，因为在b.cpp文件中是需要用到A类的定义的。</li>
+</ul>
+<p>前向编译的好处：</p>
+<ol>
+<li>可以用来减少编译期依赖。<br>
+因为如果其他文件需要<code>#include &quot;b.h&quot;</code>，这些文件不需要将a.h头文件的内容一起包含进去。这样如果a.h发生改动的话，需要重新编译的源文件会减少。</li>
+<li>可以避免将内部类暴露给外部。<br>
+利用前向声明不<code>include</code>某个内部类，而是将这个内部类的include放在对应的源文件实现中，这样其他包含这个.h文件的外部文件就不会看到内部类了。</li>
+<li>有时前向编译是必须的。<br>
+比如两个类相互指涉的情况，即A类包含B类对象，B类也包含A类对象，这样无论先定义A类还是B类都会错误，解决办法是使用前向声明其中一个类即可。</li>
+</ol>
+<p>前向编译不是万能的， 只有在一些条件下才可以使用（即编译期间不需要完整定义的）：</p>
+<ul>
+<li>定义或声明为<code>A*,A&amp;</code>，包括函数参数、返回类型、局部变量、类成员变量等。或者如<code>unique_ptr&lt;A&gt;,vector&lt;A&gt;</code>这种A作为模版类型的。</li>
+<li>声明以Foo为参数或返回类型的函数。<br>
+但是，如果该函数被定义或者调用，那么就需要知道Foo的定义（因为要用到拷贝构造函数或者析构函数），此时不能使用前向声明。<br>
+类似的，如果Foo为成员变量类型的话，也不可以使用前向声明。</li>
+<li>当要访问到Foo类的成员，需要知道Foo的大小（sizeof）等情况不能使用前向声明，因为此时需要知道这个类的定义。</li>
+</ul>
+<p>简化编译模型时的一些坑：</p>
+<ul>
+<li>注意如果在.h文件中，某个类包含类似<code>Foo Buffer</code>这样的成员对象，就不能使用前向声明<code>class Foo;</code>了。但是类似<code>Foo&amp; Buffer,Foo* Buufer</code>是可以使用前向声明的。</li>
+<li>注意include的传递性。<br>
+如果<code>#include a.h</code>，且a.h包含了<code>b.h</code>，那么当前文件就不需要再include<code>b.h</code>了</li>
+<li>注意形如<code>shared_ptr&lt;T&gt;,unique_ptr&lt;T&gt;</code>的类成员对象的前向声明。<br>
+如果在包含了智能指针对象的类中，使用了默认的析构函数（不定义析构函数，或者在.h文件中写<code>~A()=default</code>)，且使用了前向声明就会出错。<br>
+报错内容为<code>sizeof(assert(T_))..</code>，这是因为默认析构函数，编译器会在.h文件中补充该析构函数，然而该析构函数用到了前向声明类T的sizeof，此时在不知道T定义的情况下，无法通过编译。<br>
+解决办法是将默认析构函数移到.cpp文件中。</li>
+<li>注意namespace的问题。</li>
+</ul>
+<pre><code class="language-c++">namespace A{
+class B;
+class C{
+
+};
+}
+</code></pre>
+<p>这里的B实际是<code>A::B</code>的意思，如果要使用如某个POSIX库的struct的前向声明，这个struct要放到A的作用域以外才行。</p>
+<ul>
+<li>注意不要重载&amp;符号。</li>
+</ul>
+<pre><code class="language-c++">class Foo;
+void bar(Foo &amp;foo)
+{
+    Foo* p = &amp;foo;
+}
+</code></pre>
+<p>原因有两个，1是<code>&amp;foo</code>的操作失去了原意，即不一定是取指针操作了（取决于重载函数的内容）。<br>
+2是没办法使用前向声明了，因为此时<code>&amp;foo</code>操作需要知道foo对&amp;操作的定义了。</p>
 ]]></content>
     </entry>
     <entry>
