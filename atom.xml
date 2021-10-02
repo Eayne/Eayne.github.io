@@ -2,7 +2,7 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://Eayne.github.io</id>
     <title>myy blog</title>
-    <updated>2021-10-02T03:48:36.692Z</updated>
+    <updated>2021-10-02T05:23:27.316Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <link rel="alternate" href="https://Eayne.github.io"/>
     <link rel="self" href="https://Eayne.github.io/atom.xml"/>
@@ -117,6 +117,127 @@ B包含A的<code>weak_ptr</code>，当需要保证A存活时，先在函数中�
 <li>linux的<code>PTHREAD_MUTEX_ADAPTIVE_NP</code>是在没有锁时先spin一小段时间，还没有锁才挂起线程。</li>
 </ul>
 <h2 id="条件变量">条件变量</h2>
+<p>* 如果使用的不是<code>std::condition_variable</code>，要注意将布尔判断表达式放在while循环中，因为存在假唤醒的情况（如一次性唤醒多个线程，但是只有一个线程可以获取互斥锁。或者如信号唤醒等）</p>
+<h2 id="countdownlatch">countDownLatch</h2>
+<ul>
+<li>并发编程构件可以由底层的同步原语（<code>mutex,contion_variable</code>）构件。两个底层原语可以构成多线程编程的全部必备同步原语。</li>
+<li>通常用在
+<ol>
+<li>一个主线程发起多个子线程，等待每个子线程做完事情以后继续执行主线程</li>
+<li>多个子线程等待主线程完成后，通知所有子线程执行。</li>
+</ol>
+</li>
+</ul>
+<pre><code class="language-c++">class countDownLatch{
+    std::mutex mtx;
+    std::condition_variable cv;
+    int count;
+public:
+    void wait()
+    {
+        std::unique_lock&lt;std::mutex&gt; guard(mtx);
+        cv.wait(guard,[](){count == 0;})
+    }
+    void countDown()
+    {
+        std::lock_gaurd&lt;std::mutex&gt; guard;
+        count --;
+        if(count == 0)
+            cv.notifyAll();
+    }
+};
+</code></pre>
+<p>在场景1就是主线程wait，子线程countDown<br>
+在场景2就是主线程countDown，子线程wait。（因为子线程可能多个，所以使用<code>notifyAll()</code>)</p>
+<h2 id="使用rcu替代读写锁">使用RCU替代读写锁</h2>
+<ol>
+<li>读写锁中读会阻塞后面的写。在RCU中可以在读的同时让其他线程写，在写的同时其他线程也可以读旧的数据。</li>
+<li>读写锁的维护涉及引用计数，但是RCU只需要<code>mutex</code>。后者开销小点</li>
+</ol>
+<h3 id="使用shared_ptr实现rcu">使用<code>shared_ptr</code>实现RCU</h3>
+<ul>
+<li>read：读之前引用计数+1，读完以后-1。</li>
+<li>write：引用计数=1可以直接修改，引用技术&gt;1就先找一个空闲内存修改完，然后切换指针指向的对象。<br>
+这样实现可以并发的读写，但是缺点是读的时候线程可能是读到旧数据。</li>
+</ul>
+<pre><code class="language-c++">class RCU{
+    shared_ptr&lt;unordered_map&lt;int,vector&lt;int&gt;&gt;&gt;_data;
+    mutex mtx;
+public:
+    RCU() : _data(new unordered_map&lt;int,vector&lt;int&gt;&gt;()){}
+    int getData(int key,int value){
+        shared_ptr&lt;unordered_map&lt;int,vector&lt;int&gt;&gt;&gt; ptr;
+        {
+            lock_guard&lt;mutex&gt; guard(mtx);
+            ptr = _data;
+        }//减小临界区
+        for(auto it = (*ptr)[key].begin() ; it != (*ptr)[key].end() ; it ++){
+            if(*it == value){
+                return (it - (*ptr)[key].begin());
+            }
+        }
+    }
+    void insert(int key,int value){
+        lock_guard&lt;mutex&gt; guard(mtx);
+        if(!_data.unique()){ //判断是否有人在读
+            shared_ptr&lt;unordered_map&lt;int,vector&lt;int&gt;&gt;&gt; nptr(new unordered_map&lt;int,vector&lt;int&gt;&gt;(*_data));
+            swap(nptr,_data);
+        }
+        (*_data)[key].push_back(value);//没人读直接原地修改，否则就拷贝一份修改。
+    }
+};
+</code></pre>
+<ul>
+<li>使用<code>shared_ptr</code>指向被并发读写的对象。</li>
+<li>使用<code>mutex</code>保护<code>shared_ptr</code>本身（而不是保护其指向的对象）</li>
+<li>注意，在写的时候不要分成两个临界区，一个临界区读，然后在临界区外进行拷贝，在第二个临界区在写回去。因为在两个临界区中间可能会被其他线程插入写，这样再写就出现了覆盖前面写行为。<br>
+因此要将读+拷贝+写放在一个临界区中。</li>
+</ul>
+<h2 id="线程安全的singleton">线程安全的Singleton</h2>
+<ul>
+<li>不要使用double checked locking，是不安全的。</li>
+<li>第一种方法是使用local static：</li>
+</ul>
+<pre><code class="language-c++">class A{
+public:
+    static A&amp; func(){
+        static A static_object;//这里可以保证多个线程都只调用构造这个对象一次。
+        return static_object;
+    }
+}
+</code></pre>
+<ul>
+<li>第二种方法是使用<code>pthread_once</code>，或者在c++11里面的<code>call_once</code></li>
+</ul>
+<pre><code class="language-c++">class A{
+    static A* static_obj;
+    static pthread_once_t once;
+public:
+    static A* func(){
+        pthread_once(&amp;once,&amp;A::init);
+        return obj
+    }
+    static void init(){
+        static_obj = new A();
+    }
+}
+</code></pre>
+<h2 id="assert">assert</h2>
+<ul>
+<li>普通的assert在release build中是空语句。在生产环境的代码应该使用类似non-debug的assert，当出现不满足的情况下立即清理现场版并退出，否则会导致莫名其妙地崩溃。</li>
+</ul>
+<h2 id="模版类的静态变量">模版类的静态变量</h2>
+<ul>
+<li>模版类的静态变量要放在头文件定义，这样才可以在编译期间将模版类对应的静态变量都实例化。</li>
+</ul>
+<pre><code class="language-c++">//.h文件
+template&lt;typename T&gt;
+class A{
+    static xx;
+};
+template&lt;typename T&gt;
+static xx = ..;
+</code></pre>
 ]]></content>
     </entry>
     <entry>
