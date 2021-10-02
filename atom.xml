@@ -2,7 +2,7 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://Eayne.github.io</id>
     <title>myy blog</title>
-    <updated>2021-10-02T02:12:08.076Z</updated>
+    <updated>2021-10-02T03:05:30.314Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <link rel="alternate" href="https://Eayne.github.io"/>
     <link rel="self" href="https://Eayne.github.io/atom.xml"/>
@@ -25,7 +25,45 @@
         <link href="https://Eayne.github.io/post/xian-cheng-an-quan-de-dui-xiang-sheng-ming-qi-guan-li/">
         </link>
         <updated>2021-10-02T02:11:04.000Z</updated>
-        <content type="html"><![CDATA[<p>1</p>
+        <content type="html"><![CDATA[<ul>
+<li>核心问题是对象在析构时，其他线程调用这个对象的成员函数。或者在调用成员函数期间被其他线程析构</li>
+</ul>
+<h2 id="对象构造线程安全">对象构造线程安全</h2>
+<ul>
+<li>不要在构造函数中注册任何回调，或者在构造函数中将this指针传给跨线程的对象。</li>
+<li><code>muduo</code>中是一个事件驱动的网络库，涉及到很多回调注册的操作。这些注册都是放在一个单独的函数类似<code>start</code> 中进行的，而不是在构造函数中进行的。</li>
+</ul>
+<h2 id="对象析构线程安全">对象析构线程安全</h2>
+<ul>
+<li>使用<code>mutex</code>保护析构没有用。<br>
+比如线程A要析构这个对象上了锁，线程B此时调用这个对象的某个方法被锁阻塞，这样该对象被两个线程同时访问，还是不能安全地析构。<br>
+安全析构意味着只有一个线程可以访问这个对象来析构。</li>
+<li>解决方法是使用<code>weak_ptr</code>和<code>shared_ptr</code>
+<ol>
+<li><code>shared_ptr</code>是线程安全的，保证当最后一个指向对象的<code>shared_ptr</code>析构或者<code>reset</code>时，对象会被销毁<br>
+（去除<code>shared_ptr</code>指向对象的计数：reset或者析构）</li>
+<li><code>weak_ptr</code>可以被提升（<code>lock()</code>）为<code>shared_ptr</code>，如果指向的对象已经为空了，那么提升失败，会返回一个空的<code>shared_ptr</code></li>
+</ol>
+</li>
+<li>场景1：A对象包含B对象，但是不保证B对象的生命周期（如<code>Observable</code>更新时调用各个<code>Observer</code>对象的<code>update</code>函数）<br>
+此时<code>Observable</code>只需要持有<code>Observer</code>对象的<code>weak_ptr</code>，并且在<code>update</code>时先提升为<code>shared_ptr</code>，并检查非空后调用<code>update()</code></li>
+<li>场景2：B对象反过来需要包含A对象，但是也不保证A对象的生命周期（比如<code>Observer</code>需要<code>Observable</code>的<code>unregister</code>函数）<br>
+此时<code>Observer</code>也是包含<code>Observable</code>的<code>weak_ptr</code>，并使用上述类似的方式提升、调用。<br>
+注意，这里需要<code>public enabled_shared_from_this</code>的继承+<code>weak_ptr&lt;Observable&gt;(shared_from_this())</code>（弱回调）</li>
+<li>场景3：B对象反过来需要包含A对象，且强制要求A在B存活时也存活。<br>
+类似上面，只不过是B不是包含<code>weak_ptr</code>，而是包含<code>shared_ptr</code></li>
+<li>场景4：B对象反过来包含A对象，但是不保证A对象的生命周期。但是如果有需求的话，可以保证A在B存活时也存活。<br>
+（<code>muduo</code>中的<code>TcpConnection</code>和<code>Channel</code>关系，即<code>TcpConnecting</code>以<code>unique_ptr</code>包含<code>Channel</code>，而<code>Channel</code>以弱指针包含<code>TcpConnecting</code>，当通过Channel调用TcpConnection的callback时，可能会导致TcpConenction在Callback中被析构从而导致Channel析构，此时Channel要在调用Callback前保证TcpConnection的生命周期）<br>
+B包含A的<code>weak_ptr</code>，当需要保证A存活时，先在函数中将<code>weak_ptr</code>提升为<code>shared_ptr</code>，然后调用如TcpConnection的Callback，这样即使callback有意消除TcpConenction，也会被当前的函数先持有，等到该函数执行完毕后，<code>shared_ptr</code>析构，才让<code>TcpConnection</code>和<code>Channel</code>析构。</li>
+<li>注意不要使用两个<code>shared_ptr</code>互相持有，这样会导致循环引用。</li>
+<li><code>enabled_shared_from_this</code>的对象，不能使用栈内存分配，而是使用堆内存分配（<code>new</code>）</li>
+</ul>
+<h2 id="死锁">死锁</h2>
+<ul>
+<li>如果一次性要锁住多个对象，为了避免死锁，常用的一个规则是加锁是按照顺序加锁</li>
+<li>比如使用<code>std::lock</code>可以原子地锁住两个对象</li>
+<li>也可以根据被锁对象的地址，从小到大的顺序进行加锁。</li>
+</ul>
 ]]></content>
     </entry>
     <entry>
