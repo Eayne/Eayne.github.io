@@ -2,7 +2,7 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://Eayne.github.io</id>
     <title>myy blog</title>
-    <updated>2021-10-02T03:05:30.314Z</updated>
+    <updated>2021-10-02T03:48:36.692Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <link rel="alternate" href="https://Eayne.github.io"/>
     <link rel="self" href="https://Eayne.github.io/atom.xml"/>
@@ -10,15 +10,6 @@
     <logo>https://Eayne.github.io/images/avatar.png</logo>
     <icon>https://Eayne.github.io/favicon.ico</icon>
     <rights>All rights reserved 2021, myy blog</rights>
-    <entry>
-        <title type="html"><![CDATA[线程同步]]></title>
-        <id>https://Eayne.github.io/post/xian-cheng-tong-bu/</id>
-        <link href="https://Eayne.github.io/post/xian-cheng-tong-bu/">
-        </link>
-        <updated>2021-10-02T02:11:21.000Z</updated>
-        <content type="html"><![CDATA[<p>1</p>
-]]></content>
-    </entry>
     <entry>
         <title type="html"><![CDATA[线程安全的对象生命期管理]]></title>
         <id>https://Eayne.github.io/post/xian-cheng-an-quan-de-dui-xiang-sheng-ming-qi-guan-li/</id>
@@ -111,12 +102,21 @@ B包含A的<code>weak_ptr</code>，当需要保证A存活时，先在函数中�
         </link>
         <updated>2021-10-01T07:21:09.000Z</updated>
         <content type="html"><![CDATA[<h2 id="线程安全">线程安全</h2>
-<p>muduo中解决线程安全的三种方式：</p>
+<p>muduo中解决线程安全的4种方式：</p>
 <ol>
-<li>使用<code>mutex</code>加锁</li>
+<li>使用<code>mutex</code>加锁。即使用底层同步原语中的非递归互斥锁和条件变量。（其他如读写锁、信号量不使用）<br>
+这里都是使用RAII的方式（<code>std::lock_guard,std::unique_lock</code>等）</li>
 <li>将对象作为内部对象，不暴露给其他对象或线程访问。因此也就不需要加锁</li>
-<li>将函数执行装入到事件循环的任务执行队列中，即让对应的线程执行，而不是当前线程执行。</li>
+<li>将函数执行装入到事件循环的任务执行队列中，即让对应的线程执行，而不是当前线程执行。<br>
+（类似使用高级的并发编程构件，如<code>TaskQueue,Producer-Consumer Queue,CountDownLatch，threadPool</code>等）</li>
+<li>无锁编程中仅使用<code>atomic</code>而不自己编写lock-free代码</li>
 </ol>
+<h2 id="mutex">mutex</h2>
+<ul>
+<li>linux的<code>Pthreads mutex</code>使用<code>futex</code>实现，不必每次加锁解锁都陷入内核</li>
+<li>linux的<code>PTHREAD_MUTEX_ADAPTIVE_NP</code>是在没有锁时先spin一小段时间，还没有锁才挂起线程。</li>
+</ul>
+<h2 id="条件变量">条件变量</h2>
 ]]></content>
     </entry>
     <entry>
@@ -307,6 +307,508 @@ void bar(Foo &amp;foo)
 <h2 id="生成文件布局">生成文件布局</h2>
 <h2 id="构建过程">构建过程</h2>
 <h2 id="测试">测试</h2>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[muduo 日志库]]></title>
+        <id>https://Eayne.github.io/post/muduo-ri-zhi-ku-fen-xi/</id>
+        <link href="https://Eayne.github.io/post/muduo-ri-zhi-ku-fen-xi/">
+        </link>
+        <updated>2021-09-22T09:24:21.000Z</updated>
+        <content type="html"><![CDATA[<h2 id="日志类型">日志类型</h2>
+<ul>
+<li>诊断日志：文本的、供阅读的日志，用来进行故障诊断、追踪、性能分析。在生产环境的服务端中需要Log Everything all the time。</li>
+<li>交易日志：数据库的write-ahead log，记录状态变更，通过回放日志来恢复修改之后的状态。</li>
+</ul>
+<h2 id="日志库">日志库</h2>
+<h3 id="结构">结构</h3>
+<ul>
+<li>前端：给应用程序的接口来生成日志消息</li>
+<li>后端：将日志消息写入到目的地。</li>
+</ul>
+<h3 id="一条日志">一条日志</h3>
+<ul>
+<li>基本字段：包含时间戳、日志级别、源文件位置（即产生该日志的代码文件名+行数）、线程id等</li>
+<li>消息内容<br>
+尽量让一条日志为一行输出，方便使用命令行工具（awk、sed等）分析</li>
+</ul>
+<h3 id="前端api风格">前端API风格</h3>
+<ul>
+<li>C的printf风格：<code>log_info(&quot;...%d...&quot;,...);</code></li>
+<li>C++的stream&lt;&lt;风格：<code>LOG_INFO &lt;&lt; &quot;...&quot; &lt;&lt; ..;</code></li>
+</ul>
+<p>后者用起来方便（不需要像printf一样注重输入格式）。<br>
+注意不要使用C++自带的<code>iostream</code>来记录日志，因为<code>iostream</code>很笨重很慢。</p>
+<h3 id="多线程日志库">多线程日志库</h3>
+<ul>
+<li>每个线程各自有自己的前端，整个程序共用一个后端。</li>
+<li>生产者消费者问题。</li>
+</ul>
+<h2 id="日志库功能">日志库功能</h2>
+<ol>
+<li>多个输出级别。（从高到低为<code>FATAL、ERROR、WARNING、INFO、DEBUG、TRACE</code>，在设置了一个级别以后比它低级的日志不能输出）<br>
+级别可以在运行时可调，比如QA测试环境为DEBUG级别，生产环境为INFO级别。<br>
+也可以通过将级别设定的比较高来减少日志输出，适用于磁盘空间紧张情况</li>
+<li>日志目的地只能为<code>本地</code>。<br>
+往网络写日志消息不可靠，增加带宽消耗，且日志服务器如果本身故障的话会导致重试写等情况。</li>
+<li>日志滚动功能。（即生成一个新的日志文件来写）<br>
+日志滚动的条件有两个：<code>1. 单个日志文件过大 2. 单个日志时间过久</code><br>
+生成新日志时，文件名格式一般为：<code>进程名+时间戳+主机名+进程id+.log</code><br>
+旧的日志的归档和压缩应该交给专门的脚本文件来操作，而不是日志库的作用，这样这个脚本还可被共享。</li>
+<li>程序崩溃导致部分日志没有flush到文件中。<br>
+应该利用<code>core dump</code>文件来查找内存中的日志消息（muduo中说可以利用给每条日志消息附加一个cookie来找到？）</li>
+<li>每条日志的时间戳精确到微妙级。<br>
+这里获取时间使用了<code>gettimeofday</code>接口，在一些内核的实现中可以不进入内核态就获取到时间，即不是一个系统调用从而节省开销。核心原理是<code>vdso(visual dynamic shared object)</code>机制，即创建一个共享的内存页，页本身由内核维护，但是允许用户态访问。这样就可以不陷入来获取时间。</li>
+</ol>
+<h2 id="muduo日志库实现">muduo日志库实现</h2>
+<h3 id="时间戳实现">时间戳实现</h3>
+<ul>
+<li>时间戳只包含了一个<code>int64_t</code>的整形，表示过去的微秒。<br>
+虽然时间戳定义了很多方法，但是整体内存是比较小的，因此通常使用value传值而不是引用传值，这种方法让Timestamp可以通过寄存器进行值传递。</li>
+<li>由于Timestamp的构造函数只有一个参数，因此要使用<code>explicit</code>注明，避免隐式转换。</li>
+<li>秒、微秒这些通常可以使用<code>int64_t</code>来表示</li>
+<li><code>snprintf(buf,sizeof(buf),&quot;%&quot; PRId64 &quot;.%06&quot; PRId64 &quot;&quot;,seconds,microSeconds);</code>，这里的<code>PRId64</code>其实类似于&quot;%d&quot;这种格式，只不过换成了64int</li>
+<li>使用<code>static_cast</code>进行类型转换，比如<code>gmtime_r</code>的参数需要<code>time_t</code>类型，可以使用<code>static_cast&lt;time_t&gt;(microseconds / kMicroSecondsInSeconds)</code>，将整形转为<code>time_t</code></li>
+<li>类内的常量（<code>static</code>或者<code>enum</code>等）一般是k开头的变量。<br>
+注意，最好将类内的<code>static int</code>放在类外初始化，而不是类内初始化。因为类内初始化整形静态变量只在高级的编译器允许通过，换到低级编译器上容易出错。</li>
+<li>静态变量定义最好放在<code>.cpp</code>文件中，而不是放在<code>.h</code>文件中。因为如果两个文件同时include这个头文件并进行编译，就会有这个静态变量的两份定义，在链接的时候是会出错的。</li>
+</ul>
+<h3 id="logstream类实现">LogStream类实现</h3>
+<ul>
+<li>包含一个<code>FixedBuffer</code>类，是一个固定长度的Buffer（<code>char</code>数组），长度通过模版参数来确定。</li>
+</ul>
+<pre><code class="language-c++">const int kSmallBuffer = 4000;
+const int kLargeBuffer = 4000 * 1000;
+
+template&lt;int Size&gt; //
+class FixedBuffer
+{
+   char _data[Size];
+   ...
+};
+FixedBuffer&lt;kSmallBuffer&gt; buffer;
+</code></pre>
+<ul>
+<li>LogStream类包含了一个FixedBuffer，并重载了多个参数类型的<code>&lt;&lt;</code>符号。其中整型转化为字符的算法为：</li>
+</ul>
+<pre><code class="language-c++">const char * digits = &quot;9876543210123456789&quot;;
+const char * zeros = digits + 9;
+const char * hexDigits = &quot;0123456789ABCDEF&quot;;
+
+template&lt;typename T&gt;
+size_t convert(char * buf,T value)
+{
+    T i = value;
+    char * ptr = buf;
+    do
+    {
+        int digit = static_cast&lt;int&gt;(i % 10);
+        *ptr++ = zeros[digit];
+        i /= 10;
+    }while(i != 0);
+    if(value &lt; 0)
+        *ptr++ = '-';
+    *ptr = '\0';
+    std::reverse(buf,ptr);
+    return ptr - buf;
+}
+</code></pre>
+<p>核心原理是使用了一个digits字符数组，这样对于负数的话求每个位的数字是也可以获取到，最后在对字符数组进行反转即可。</p>
+<ul>
+<li>由于有很多的<code>&lt;&lt;</code>重载，因此可以考虑更多的复用代码。比如已经有了<code>char *</code>参数的<code>&lt;&lt;</code>函数，那么对于<code>unsigned char*</code>就可以先用<code>reinterpret_cast</code>进行转换，然后再使用<code>char*</code>参数的<code>&lt;&lt;</code>函数。<br>
+<code>char*</code>字符串都会使用<code>memcpy</code>进行拷贝。</li>
+<li>格式化输出：如果希望使用<code>LOG_XX &lt;&lt;</code>的API风格进行格式化输出，可以使用一个<code>Fmt</code>类，这个类传入字符串格式，然后使用<code>snprintf</code>转化为格式化的C风格字符串，再将给字符串使用<code>&lt;&lt;</code>重载即可。</li>
+</ul>
+<pre><code class="language-c++">class Fmt
+{
+    char _buf[32];
+    size_t len;
+public:
+    Fmt(const Fmt &amp;) = delete;
+    Fmt &amp; operator=(const Fmt &amp;) = delete;
+
+    template&lt;typename... Args&gt;
+    explicit Fmt(const char * fmt, Args... args)
+    {
+        len = snprintf(_buf,sizeof(_buf),fmt,args...);
+    }
+
+    const char * data() const { return _buf; } //const this，则返回值也应该是const
+    size_t length() const { return len; }
+};
+</code></pre>
+<ul>
+<li>注意，如果一个成员函数的this是const，那么函数返回值类型也要是const。</li>
+</ul>
+<h3 id="logging类">Logging类</h3>
+<ul>
+<li>为了使用 <code>LOG_INFO &lt;&lt;</code>的格式进行日志输出，muduo将其定义为一个宏产生一个临时的 <code>Logger</code>对象的 <code>stream</code>：</li>
+</ul>
+<pre><code class="language-c++">#define LOG_TRACE MyNetLib::Logger(__FILE__,__LINE__,MyNetLib::Logger::TRACE).stream()
+#define LOG_INFO MyNetLib::Logger(__FILE__,__LINE__,MyNetLib::Logger::INFO).stream()
+#define LOG_DEBUG MyNetLib::Logger(__FILE__,__LINE__,MyNetLib::Logger::DEBUG).stream()
+#define LOG_WARN MyNetLib::Logger(__FILE__,__LINE__,MyNetLib::Logger::WARN).stream()
+#define LOG_ERROR MyNetLib::Logger(__FILE__,__LINE__,MyNetLib::Logger::ERROR).stream()
+#define LOG_FATAL MyNetLib::Logger(__FILE__,__LINE__,MyNetLib::Logger::FATAL).stream()
+</code></pre>
+<p>其中<code>__FILE__,__LINE__</code>会让预处理器替换为使用该宏的语句所在的文件名+行数。<br>
+注意在define中最后一列不要加上 <code>;</code>，否则替换时容易出错。</p>
+<ul>
+<li>使用时<code>Logger</code>会每输出一次就临时产生一次并析构。</li>
+<li><code>Logger</code>的核心是调用<code>LogStream</code>类的接口。在<code>Logger</code>析构时会将<code>LogStream</code>的固定大小Buffer的内容输出出来。如果<code>Logger</code>的日志级别是<code>FATAL</code>，那么在输出完后会<code>abort</code>程序</li>
+<li>在<code>Logger</code>析构时，日志输出的地方是由一个全局变量来决定的，默认情况下是<code>stdout</code>。在输出时使用<code>fwrite</code>输出，而<code>fwrite</code>由于其加锁的性质是线程安全的，因此可以在多个线程中分别输出。<br>
+如果想要在<code>Logger</code>中采用多线程异步日志输出的方式，则可以将输出的地方转为下面提到的<code>AsyncLogging</code>，即<code>Logger</code>作为<code>AsyncLogging</code>的前端写入。</li>
+</ul>
+<h2 id="多线程异步日志">多线程异步日志</h2>
+<h3 id="实现方案">实现方案</h3>
+<ol>
+<li>多个线程共同写一个日志文件，写时使用全局<code>mutex</code><br>
+缺点是可能全部线程去抢一个锁</li>
+<li>多个线程各自写自己的线程。<br>
+缺点是可能业务线程阻塞在写磁盘操作</li>
+</ol>
+<h3 id="muduo多线程异步日志">muduo多线程异步日志</h3>
+<ol>
+<li>多个线程写入到缓冲区（加锁写入），一个背景线程收集日志消息并写入同一个日志文件中。<br>
+注意，线程写入到缓冲区不涉及磁盘IO</li>
+<li>双缓冲技术：前端写入消息是A缓冲，后台日志将写满到B缓冲flush到磁盘上，当flush完成后，再将A、B缓冲区交换。<br>
+在实现中，AB缓冲的数量不一定只有一个，即可能AB描述的是一个缓冲区队列。</li>
+<li>muduo异步日志的A缓冲队列包含两个预备缓冲current和next，前台线程先往current写入，如果current写满了，且next是空的，就往next写入。<br>
+当current或者next写满以后，会将其加入到A队列中。当两个缓冲区都写满，会唤醒后台线程来收集日志并写入文件。<br>
+如果两个日志都写满了，此时还需要写入的话，会新建一个Buffer并写入，然后将写入的Buffer加入到A队列中。</li>
+<li>B缓冲队列属于后台线程的，其包含两个空的缓冲区。当后台线程唤醒后，将A队列和B队列交换，这样前台线程又获取到了空的两个缓冲区来写日志消息了。<br>
+后台线程将包含多个写满的缓冲区的队列写入到日志文件中。<br>
+另外，后台线程会定期被唤醒，避免日志缓冲区长时间没有被刷到磁盘中。</li>
+</ol>
+<h3 id="实现细节">实现细节</h3>
+<pre><code class="language-C++">class AsyncLogging{
+    typedef MyNetLib::detail::FixedBuffer&lt;MyNetLib::detail::kLargeBuffer&gt; Buffer;
+    std::mutex mtx;
+    std::condition_variable cond;
+    std::unique_ptr&lt;Buffer&gt; _currentBuffer;
+    std::unique_ptr&lt;Buffer&gt; _nextBuffer;
+    std::vector&lt;std::unique_ptr&lt;Buffer&gt;&gt; _buffers;
+    std::atomic&lt;bool&gt; _running;
+    const int _flushInterval;
+    std::thread _thread;
+    const std::string _fileName;
+    off_t _rollSize;
+public:
+    AsyncLogging(const std::string &amp; fileName,off_t rollSize,const int flushInterval = 3);
+
+    void append(const char * data, size_t len);
+
+    void threadFunc();
+
+    ~AsyncLogging()
+    {
+        if(_running)
+            stop();
+    }
+
+    void start()
+    {
+        _running = true;
+        _thread = std::move(std::thread(std::bind(&amp;AsyncLogging::threadFunc,this)));
+    }
+
+    void stop()
+    {
+        _running = false;
+        cond.notify_one();
+        _thread.join();
+    }
+};
+</code></pre>
+<ul>
+<li><code>AsyncLogging</code>对象包含一个后台线程，其余的线程要写入的话使用同一个对象的<code>append</code></li>
+<li><code>start</code>：为了能控制线程的开始和结束，只有在开始时才使用<code>threadFunc</code>构造后台线程，如果在<code>AsyncLogging</code>构造的时候就创建会让线程立刻执行起来</li>
+<li><code>stop</code>时会唤醒后台线程尽快处理完并等待至该线程结束。由于<code>threadFunc</code>是一个循环，因此通过外部的原子变量<code>_running</code>来决定线程内部是否继续运行。</li>
+<li>这里使用<code>mutex</code>将多个线程间共享的变量current buffer、next buffer和buffers三个一起锁住。使用<code>condition_variable</code>作为前台线程和后台线程之间的同步机制。</li>
+<li>append操作</li>
+</ul>
+<pre><code class="language-c++">void AsyncLogging::append(const char * data, size_t len)
+{
+    std::lock_guard&lt;std::mutex&gt; guard(mtx);
+    if(_currentBuffer -&gt; avail() &gt; len)
+    {
+        _currentBuffer -&gt; append(data,len);
+    }
+    else
+    {
+        _buffers.push_back(std::move(_currentBuffer));
+        if(_nextBuffer)
+            _currentBuffer = std::move(_nextBuffer);
+        else
+            _currentBuffer.reset(new Buffer);
+        _currentBuffer -&gt; append(data,len);
+        cond.notify_one();
+    }
+}
+</code></pre>
+<ul>
+<li>单个Buffer是固定大小的（如4k），当<code>current buffer</code>可写时写入，不可写时使用<code>next buffer</code>（通过<code>std::move</code>，没有太大的内存拷贝开销），<code>next buffer</code>也没有的话才会创建一个新的Buffer</li>
+<li>最终会将写满的Buffer都加入到队列中。</li>
+</ul>
+<h3 id="后台线程函数">后台线程函数</h3>
+<pre><code class="language-c++">void AsyncLogging::threadFunc()
+{
+    std::unique_ptr&lt;Buffer&gt; newBuffer1(new Buffer);
+    std::unique_ptr&lt;Buffer&gt; newBuffer2(new Buffer);
+    std::vector&lt;std::unique_ptr&lt;Buffer&gt;&gt; newBuffers;
+    LogFile output(_fileName,_rollSize);
+    newBuffers.reserve(16);
+    newBuffer1 -&gt; bzero();
+    newBuffer2 -&gt; bzero();
+    while(_running)
+    {
+        {
+            std::unique_lock&lt;std::mutex&gt; lk(mtx);
+            if(_buffers.empty())
+            {
+                cond.wait_for(lk,std::chrono::seconds(_flushInterval));
+            }
+            _buffers.push_back(std::move(_currentBuffer));
+            std::swap(newBuffers,_buffers);
+            _currentBuffer = std::move(newBuffer1);
+            if(!_nextBuffer)
+                _nextBuffer = std::move(newBuffer2);
+        }
+
+        if(newBuffers.size() &gt; 25)
+        {
+            char buf[256];
+            snprintf(buf,sizeof buf,&quot;drop messages %zd large buffers\n&quot;,newBuffers.size() - 2);
+            //zd
+            fputs(buf,stderr);
+            output.append(buf,strlen(buf));
+            newBuffers.erase(newBuffers.begin() + 2,newBuffers.end());
+        }
+
+        for(const auto &amp; buf : newBuffers)
+        {
+            output.append(buf -&gt; data(), buf -&gt; length());
+        }
+
+        if(!newBuffer1)
+        {
+            newBuffer1 = std::move(newBuffers.back());
+            newBuffers.pop_back();
+            newBuffer1 -&gt; reset();
+        }
+
+        if(!newBuffer2)
+        {
+            newBuffer2 = std::move(newBuffers.back());
+            newBuffers.pop_back();
+            newBuffer2 -&gt; reset();
+        }
+
+        newBuffers.clear();
+        output.flush();
+    }
+    output.flush();
+}
+</code></pre>
+<ul>
+<li>两个new Buffer在创建时使用了<code>bzero</code>（<code>memset</code>为0）置零，原因是避免程序热身时page fault引发性能不稳定。</li>
+<li>通过<code>swap</code>交换指针的方式，将两个buffer队列交换，开销很小。</li>
+<li>如果前端一次性写入了过多日志到Buffer中，会超过后台线程flush到磁盘的能力，因此使用限流的方式将队列尾部内容直接丢弃。</li>
+<li>在muduo中大量的字符串操作都没有没有<code>std::string</code>，而是使用原声的C接口如<code>snprintf,strlen</code>：</li>
+</ul>
+<pre><code class="language-c++">char buf[64]; //栈分配内存
+snprintf....
+</code></pre>
+<ul>
+<li>对于前端额外new的Buffer，会在<code>newBuffers.clear()</code>中给释放掉内存。</li>
+</ul>
+<h3 id="文件操作">文件操作</h3>
+<pre><code class="language-C++">class AppendFile{
+    off_t _writtenBytes;
+    FILE * fd;
+    char * buffer[64 * 1024];
+    size_t write(const char * data,size_t len);
+public:
+    AppendFile(const std::string &amp; fileName);
+    
+    void flush();
+
+    void append(const char * data,size_t len);
+
+    ~AppendFile();
+
+    AppendFile(const AppendFile &amp;) = delete;
+
+    AppendFile &amp; operator= (const AppendFile &amp;) = delete;
+
+    size_t writtenBytes() const { return _writtenBytes; }
+};
+</code></pre>
+<ul>
+<li>文件操作中都使用了C库的<code>fread,fwrite,fopen</code>等而不是系统调用<code>read、write、open</code>，前者其实封装的比较多，且是线程安全的，但后者不一定。</li>
+<li>构造该类时打开文件：<code>::fopen(fileName.c_str(),&quot;ae&quot;)</code><br>
+a表示append，e表示<code>O_CLOEXEC</code>，muduo中打开任何的文件都使用了<code>O_CLOEXEC</code></li>
+<li>同时还使用了<code>char buffer[64*1024]</code>，<code>::setBuffer(fd,buffer,sizeof(buffer))</code>作为文件描述符的用户态缓冲区（而没有使用系统库分配的）</li>
+<li>在写入文件时使用<code>::fwrite_unlocked(data,1,len,fd);</code>而不是fwrite，前者要快很多。<br>
+这是因为fwrite的内部其实是使用了lock来保证写入的串行化的，因此这里unlock会很快。<br>
+通常会将这个fwrite_unlocked搭配一个外部的<code>std::mutex</code>配合使用，或者像<code>async_logging</code>中只让后台线程进行fwrite操作。</li>
+<li>append操作：</li>
+</ul>
+<pre><code class="language-c++">void FileUtil::AppendFile::append(const char * data,size_t len)
+{
+    size_t writtenLen = 0;
+    while(writtenLen != len)
+    {
+        size_t remain = len - writtenLen;
+        size_t n = write(data + writtenLen,remain);;
+        if(n != remain)
+        {
+            int err = ::ferror(fd);
+            if(err)
+            {
+                ::fprintf(stderr,&quot;AppendFile::append() failed %s\n&quot;,strerror(err));
+                break;
+            }
+        }
+        writtenLen += n;
+    }
+    _writtenBytes += writtenLen;
+}
+</code></pre>
+<p>由于fwrite可能只写入部分数据，因此通过循环写的方式确保都将内容写完了才返回。</p>
+<ul>
+<li>在C++中对于一个类的定义，要注意可拷贝性，如果不能拷贝就应该显示的注明拷贝构造函数或者<code>operator=</code>为<code>delete</code></li>
+<li><code>size_t</code>一般适合于内存中的长度，比如<code>for(size_t i = 0 ; i &lt; s.size() ; i ++)</code>，比如数组下标，比如写入的长度。</li>
+<li><code>off_t</code>适合于文件的大小长度</li>
+<li><code>ssize_t</code>一般适合于有符号的返回值，比如小于0表示错误等，长于0表示长度等。</li>
+<li>项目中要注意使用命名空间，例如<code>namespace muduo</code>，<code>namespace muduo::net</code>，<code>namespace muduo::base</code>，避免命名上的冲突。</li>
+</ul>
+<pre><code class="language-c++">//c.h文件
+namespace A{
+namespace B{
+class C{
+
+};
+}
+
+//c.cpp文件
+using namespace A;
+using namespace A::B; //注意要在.cpp文件使用这个，否则下面的C就无法找到定义了。
+C::～C(){}
+</code></pre>
+<ul>
+<li>reserve：类似<code>std::vector,std::string</code>都可以在构造时先分配好一个预估的长度。</li>
+<li>c++类型转换：<br>
+一般的类型转换使用<code>static_cast</code>，比如整形之间的转换等<br>
+如果涉及到指针类型的转换，应该使用<code>reinterpret_cast</code>，比如<code>const char*</code>转<code>const int*</code>等</li>
+</ul>
+<h3 id="logfile操作">LogFile操作</h3>
+<ul>
+<li>LogFile其实就是在文件操作的上层进行封装，提供日志滚动功能。</li>
+</ul>
+<pre><code class="language-c++">class LogFile{
+    std::unique_ptr&lt;FileUtil::AppendFile&gt; _file;
+    bool _isThreadSafe;
+    std::mutex _mtx;
+    off_t _rollsize;
+    int _flushInterval;
+    int _count;
+    const int _checkEveryN;
+    const std::string _fileName;
+    time_t lastRoll;
+    time_t lastFlush;
+    static const int kSecondsPerRoll = 24 * 60 * 60;
+
+    void unlockedAppend(const char * data,size_t len);
+
+    void rollFile();
+
+    std::string getLogFileName();
+public:
+    LogFile(const std::string &amp; fileName,
+            off_t rollsize,
+            int flushInterval = 3,
+            int checkEveryN = 1024,
+            bool isThreadSafe = true);
+
+    void append(const char * data,size_t len);
+
+    void flush();
+};
+</code></pre>
+<ul>
+<li>append时会判断文件写入的长度，如果超过了<code>rollsize</code>就会关闭当前文件，并产生一个新的日志文件<br>
+（通过对<code>_file</code>智能指针进行reset）<br>
+如果没超过长度，则会判断时间上是不是超过了<code>kSecondsPerRoll</code>，是的话也进行滚动。</li>
+</ul>
+<pre><code class="language-c++">void LogFile::unlockedAppend(const char * data,size_t len)
+{
+    _file -&gt; append(data,len);
+    
+    if(_file -&gt; writtenBytes() &gt; _rollsize)
+    {
+        time_t now = ::time(NULL);
+        time_t roll = now / kSecondsPerRoll * kSecondsPerRoll;
+        lastRoll = roll;
+        lastFlush = now;
+        rollFile();
+    }
+    else
+    {
+        _count ++;
+        if(_count &gt;= _checkEveryN)
+        {
+            _count = 0;
+            time_t now = ::time(NULL);
+            time_t roll = now / kSecondsPerRoll * kSecondsPerRoll;
+            if(roll != lastRoll)
+            {
+                lastRoll = roll;
+                lastFlush = now;
+                rollFile();
+            }
+            else if(now - lastFlush &gt;= _flushInterval)
+            {
+                lastFlush = now;
+                _file -&gt; flush();
+            }
+        }
+    }
+}
+</code></pre>
+<p>注意在时间判断上是每<code>checkEveryN</code>次去获取一次时间来判断，减少开销。</p>
+<ul>
+<li>时间获取：两种方式</li>
+</ul>
+<ol>
+<li><code>gettimeofday</code>，获取<code>struct timeval</code>类型；</li>
+<li><code>time(NULL)</code>，获取<code>time_t</code>类型<br>
+区别在于前者更加精确（毫秒级别），后者是秒级别。</li>
+</ol>
+<ul>
+<li>日志文件名产生：涉及到将时间类型转化为指定格式（<code>y,m,d,h,m,s</code>等）</li>
+</ul>
+<pre><code class="language-c++">std::string LogFile::getLogFileName()
+{
+    std::string logFileName;
+    logFileName.reserve(_fileName.size() + 64);
+    logFileName = _fileName;
+    struct tm tm;
+    time_t now = time(NULL);
+    gmtime_r(&amp;now,&amp;tm); //
+    char stringBuf[32]; //
+    strftime(stringBuf,sizeof(stringBuf),&quot;.%Y%m%d-%H%M%S&quot;,&amp;tm);
+    logFileName += stringBuf;
+    snprintf(stringBuf,sizeof(stringBuf),&quot;.%d&quot;,::getpid());
+    logFileName += stringBuf;
+    logFileName += &quot;.log&quot;;
+    return logFileName;
+}
+</code></pre>
+<ul>
+<li>核心是将<code>time_t</code>转化为<code>struct tm</code>，然后使用<code>strftime</code>转化为对应时间格式的字符串。<br>
+注意，转化出来的<code>struct tm</code>中年份少了1900，月份为0开始计数。</li>
+</ul>
 ]]></content>
     </entry>
 </feed>

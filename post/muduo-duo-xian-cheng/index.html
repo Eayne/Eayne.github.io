@@ -3,7 +3,7 @@
     <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Muduo 多线程 | myy blog</title>
-<link rel="shortcut icon" href="https://Eayne.github.io/favicon.ico?v=1633143928401">
+<link rel="shortcut icon" href="https://Eayne.github.io/favicon.ico?v=1633146514734">
 <link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
 <link rel="stylesheet" href="https://Eayne.github.io/styles/main.css">
 <link rel="alternate" type="application/atom+xml" title="Muduo 多线程 | myy blog - Atom Feed" href="https://Eayne.github.io/atom.xml">
@@ -12,13 +12,10 @@
 
 
     <meta name="description" content="线程安全
-muduo中解决线程安全的三种方式：
+muduo中解决线程安全的4种方式：
 
-使用mutex加锁
-将对象作为内部对象，不暴露给其他对象或线程访问。因此也就不需要加锁
-将函数执行装入到事件循环的任务执行队列中，即让对应的线程执行，而不是当前线程执行。
-
-..." />
+使用mutex加锁。即使用底层同步原语中的非递归互斥锁和条件变量。（其他如读写锁、信号量不使用）
+这里都是使用RAII的方式（std::lock_guard,std::unique_loc..." />
     <meta name="keywords" content="muduo" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
     <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
@@ -28,7 +25,7 @@ muduo中解决线程安全的三种方式：
       <div class="main-content">
         <div class="site-header">
   <a href="https://Eayne.github.io">
-  <img class="avatar" src="https://Eayne.github.io/images/avatar.png?v=1633143928401" alt="">
+  <img class="avatar" src="https://Eayne.github.io/images/avatar.png?v=1633146514734" alt="">
   </a>
   <h1 class="site-title">
     myy blog
@@ -88,12 +85,21 @@ muduo中解决线程安全的三种方式：
             <div class="post-content-wrapper">
               <div class="post-content">
                 <h2 id="线程安全">线程安全</h2>
-<p>muduo中解决线程安全的三种方式：</p>
+<p>muduo中解决线程安全的4种方式：</p>
 <ol>
-<li>使用<code>mutex</code>加锁</li>
+<li>使用<code>mutex</code>加锁。即使用底层同步原语中的非递归互斥锁和条件变量。（其他如读写锁、信号量不使用）<br>
+这里都是使用RAII的方式（<code>std::lock_guard,std::unique_lock</code>等）</li>
 <li>将对象作为内部对象，不暴露给其他对象或线程访问。因此也就不需要加锁</li>
-<li>将函数执行装入到事件循环的任务执行队列中，即让对应的线程执行，而不是当前线程执行。</li>
+<li>将函数执行装入到事件循环的任务执行队列中，即让对应的线程执行，而不是当前线程执行。<br>
+（类似使用高级的并发编程构件，如<code>TaskQueue,Producer-Consumer Queue,CountDownLatch，threadPool</code>等）</li>
+<li>无锁编程中仅使用<code>atomic</code>而不自己编写lock-free代码</li>
 </ol>
+<h2 id="mutex">mutex</h2>
+<ul>
+<li>linux的<code>Pthreads mutex</code>使用<code>futex</code>实现，不必每次加锁解锁都陷入内核</li>
+<li>linux的<code>PTHREAD_MUTEX_ADAPTIVE_NP</code>是在没有锁时先spin一小段时间，还没有锁才挂起线程。</li>
+</ul>
+<h2 id="条件变量">条件变量</h2>
 
               </div>
               <div class="toc-container">
@@ -101,6 +107,8 @@ muduo中解决线程安全的三种方式：
 <li>
 <ul>
 <li><a href="#%E7%BA%BF%E7%A8%8B%E5%AE%89%E5%85%A8">线程安全</a></li>
+<li><a href="#mutex">mutex</a></li>
+<li><a href="#%E6%9D%A1%E4%BB%B6%E5%8F%98%E9%87%8F">条件变量</a></li>
 </ul>
 </li>
 </ul>
