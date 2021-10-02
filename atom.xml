@@ -2,7 +2,7 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://Eayne.github.io</id>
     <title>myy blog</title>
-    <updated>2021-10-02T05:23:27.316Z</updated>
+    <updated>2021-10-02T06:00:50.894Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <link rel="alternate" href="https://Eayne.github.io"/>
     <link rel="self" href="https://Eayne.github.io/atom.xml"/>
@@ -117,7 +117,9 @@ B包含A的<code>weak_ptr</code>，当需要保证A存活时，先在函数中�
 <li>linux的<code>PTHREAD_MUTEX_ADAPTIVE_NP</code>是在没有锁时先spin一小段时间，还没有锁才挂起线程。</li>
 </ul>
 <h2 id="条件变量">条件变量</h2>
-<p>* 如果使用的不是<code>std::condition_variable</code>，要注意将布尔判断表达式放在while循环中，因为存在假唤醒的情况（如一次性唤醒多个线程，但是只有一个线程可以获取互斥锁。或者如信号唤醒等）</p>
+<ul>
+<li>如果使用的不是<code>std::condition_variable</code>，要注意将布尔判断表达式放在while循环中，因为存在假唤醒的情况（如一次性唤醒多个线程，但是只有一个线程可以获取互斥锁。或者如信号唤醒等）</li>
+</ul>
 <h2 id="countdownlatch">countDownLatch</h2>
 <ul>
 <li>并发编程构件可以由底层的同步原语（<code>mutex,contion_variable</code>）构件。两个底层原语可以构成多线程编程的全部必备同步原语。</li>
