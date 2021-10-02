@@ -2,7 +2,7 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://Eayne.github.io</id>
     <title>myy blog</title>
-    <updated>2021-10-01T13:44:13.493Z</updated>
+    <updated>2021-10-02T01:53:06.561Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <link rel="alternate" href="https://Eayne.github.io"/>
     <link rel="self" href="https://Eayne.github.io/atom.xml"/>
@@ -385,6 +385,24 @@ public:
 <li>注意，如果一个成员函数的this是const，那么函数返回值类型也要是const。</li>
 </ul>
 <h3 id="logging类">Logging类</h3>
+<ul>
+<li>为了使用 <code>LOG_INFO &lt;&lt;</code>的格式进行日志输出，muduo将其定义为一个宏产生一个临时的 <code>Logger</code>对象的 <code>stream</code>：</li>
+</ul>
+<pre><code class="language-c++">#define LOG_TRACE MyNetLib::Logger(__FILE__,__LINE__,MyNetLib::Logger::TRACE).stream()
+#define LOG_INFO MyNetLib::Logger(__FILE__,__LINE__,MyNetLib::Logger::INFO).stream()
+#define LOG_DEBUG MyNetLib::Logger(__FILE__,__LINE__,MyNetLib::Logger::DEBUG).stream()
+#define LOG_WARN MyNetLib::Logger(__FILE__,__LINE__,MyNetLib::Logger::WARN).stream()
+#define LOG_ERROR MyNetLib::Logger(__FILE__,__LINE__,MyNetLib::Logger::ERROR).stream()
+#define LOG_FATAL MyNetLib::Logger(__FILE__,__LINE__,MyNetLib::Logger::FATAL).stream()
+</code></pre>
+<p>其中<code>__FILE__,__LINE__</code>会让预处理器替换为使用该宏的语句所在的文件名+行数。<br>
+注意在define中最后一列不要加上 <code>;</code>，否则替换时容易出错。</p>
+<ul>
+<li>使用时<code>Logger</code>会每输出一次就临时产生一次并析构。</li>
+<li><code>Logger</code>的核心是调用<code>LogStream</code>类的接口。在<code>Logger</code>析构时会将<code>LogStream</code>的固定大小Buffer的内容输出出来。如果<code>Logger</code>的日志级别是<code>FATAL</code>，那么在输出完后会<code>abort</code>程序</li>
+<li>在<code>Logger</code>析构时，日志输出的地方是由一个全局变量来决定的，默认情况下是<code>stdout</code>。在输出时使用<code>fwrite</code>输出，而<code>fwrite</code>由于其加锁的性质是线程安全的，因此可以在多个线程中分别输出。<br>
+如果想要在<code>Logger</code>中采用多线程异步日志输出的方式，则可以将输出的地方转为下面提到的<code>AsyncLogging</code>，即<code>Logger</code>作为<code>AsyncLogging</code>的前端写入。</li>
+</ul>
 <h2 id="多线程异步日志">多线程异步日志</h2>
 <h3 id="实现方案">实现方案</h3>
 <ol>
