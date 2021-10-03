@@ -3,7 +3,7 @@
     <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Muduo Reactor | myy blog</title>
-<link rel="shortcut icon" href="https://Eayne.github.io/favicon.ico?v=1633152595932">
+<link rel="shortcut icon" href="https://Eayne.github.io/favicon.ico?v=1633240959250">
 <link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
 <link rel="stylesheet" href="https://Eayne.github.io/styles/main.css">
 <link rel="alternate" type="application/atom+xml" title="Muduo Reactor | myy blog - Atom Feed" href="https://Eayne.github.io/atom.xml">
@@ -11,8 +11,16 @@
 
 
 
-    <meta name="description" content="1
-" />
+    <meta name="description" content="
+现代C+的Reactor模式实现
+
+EventLoop：事件循环
+Poller：IO multiplexing，获取IO事件
+Channel：事件分发，将IO multiplexing的IO事件分发给对应的文件描述符的事件处理函数
+
+
+
+..." />
     <meta name="keywords" content="muduo" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
     <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
@@ -22,7 +30,7 @@
       <div class="main-content">
         <div class="site-header">
   <a href="https://Eayne.github.io">
-  <img class="avatar" src="https://Eayne.github.io/images/avatar.png?v=1633152595932" alt="">
+  <img class="avatar" src="https://Eayne.github.io/images/avatar.png?v=1633240959250" alt="">
   </a>
   <h1 class="site-title">
     myy blog
@@ -70,7 +78,7 @@
                 2021-09-24
               </span>
               <span>
-                1 min read
+                3 min read
               </span>
               
                 <a href="https://Eayne.github.io/tag/Bgs-V9DJY/" class="post-tag">
@@ -81,11 +89,85 @@
             
             <div class="post-content-wrapper">
               <div class="post-content">
-                <p>1</p>
+                <ul>
+<li>现代C+的Reactor模式实现
+<ol>
+<li><code>EventLoop</code>：事件循环</li>
+<li><code>Poller</code>：IO multiplexing，获取IO事件</li>
+<li><code>Channel</code>：事件分发，将IO multiplexing的IO事件分发给对应的文件描述符的事件处理函数</li>
+</ol>
+</li>
+</ul>
+<h2 id="eventloop">EventLoop</h2>
+<ul>
+<li><code>EventLoop</code>会进行<code>loop</code>循环，<code>loop</code>中包含IO multiplexing的阻塞（<code>select,poll,epoll</code>等）</li>
+<li>一个EventLoop只属于一个线程，即在该线程中进行循环。</li>
+<li>一个线程也只能有一个EventLoop。（这一点是通过<code>thread_local</code>变量来判断的）</li>
+<li>EventLoop的接口分两种，一种是线程安全的（可以跨线程调用），另一种是必须在当前线程调用的。<br>
+判断方法：</li>
+</ul>
+<ol>
+<li>非线程安全函数：（<code>assertInLoopThread</code>）在<code>EventLoop</code>构造时会记录构造该对象的<code>tid</code>。在运行<code>EventLoop</code>的非线程安全函数时会判断<code>tid</code>是否和<code>std::this_thread::get_id()</code>相同，不相同的话说明在其他线程运行该<code>EventLoop</code>，会<code>abort</code>。</li>
+<li>线程安全函数：核心原理是通过加锁<code>mutex</code>来实现线程安全。</li>
+</ol>
+<h2 id="channel">Channel</h2>
+<ul>
+<li>每个管道只负责一个文件描述符的事件分发</li>
+<li>事件分发通过回调，即将<code>std::function&lt;void()&gt;</code>（通常是通过<code>std::bind(...)</code>构造的)设置为<code>Channel</code>的回调函数成员，比如<code>readCallback,writeCallback</code>等</li>
+<li>Channel和Poller的交互：</li>
+</ul>
+<ol>
+<li>要允许读或者写的话，是将一个变量<code>int events</code>进行或操作，如读就是设置<code>event |= kReadEvent</code></li>
+<li>Poller捕获到事件的话，就通过设置Channel的<code>int revents</code>来通知Channel什么事件发生（读、写事件等）</li>
+</ol>
+<ul>
+<li>
+<p>监听事件<br>
+如果是可读，则设置<code>events|=(POLLIN|POLLPRI)</code><br>
+如果是可写，则设置<code>events|=(POLLOUT)</code></p>
+</li>
+<li>
+<p>事件分发</p>
+</li>
+</ul>
+<ol>
+<li>写事件：<code>POLLOUT</code></li>
+<li>读事件：<code>POLLIN,POLLPRI,POLLRDHUP</code><br>
+其中<code>POLLIN</code>表示有普通数据可读，<code>POLLPRI</code>表示高优先级数据可读（如TCP socket的带外数据可读），<code>POLLRDHUP</code>表示对端socket使用<code>close</code>或者<code>shutdown write</code></li>
+<li>错误事件：<code>POLLERR,POLLNVAL</code><br>
+<code>POLLERR</code>表示错误情况，<code>POLLNVAL</code>表示文件描述符没有<code>open</code>。</li>
+<li>关闭事件：<code>POLLHUP</code><br>
+对端socket关闭。</li>
+</ol>
+<ul>
+<li>对于读处理：<br>
+通常需要写读取以后，判断读取的长度</li>
+</ul>
+<ol>
+<li>大于0是正常读取消息。</li>
+<li>等于0表示对方关闭。</li>
+<li>小于0则为读取错误。</li>
+</ol>
+<ul>
+<li>对于写处理：<br>
+当读取到对方关闭<code>close</code>时（无论是<code>POLLHUP</code>还是从read中读取到的消息长度为0），都需要及时<code>close socket</code>，无论输出缓冲区是否有内容。<br>
+只有在主动shutodwn时才考虑先输出缓冲区的内容再延迟shutdown</li>
+</ul>
+<p>留坑：读取到shutdown如何处理？为什么服务器先关闭后客户端一直在poll events？，把虚拟机上的代码换过来。</p>
+<h2 id="poller">Poller</h2>
 
               </div>
               <div class="toc-container">
-                
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#eventloop">EventLoop</a></li>
+<li><a href="#channel">Channel</a></li>
+<li><a href="#poller">Poller</a></li>
+</ul>
+</li>
+</ul>
+
               </div>
             </div>
           </article>
